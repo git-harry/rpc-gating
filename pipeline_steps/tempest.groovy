@@ -30,11 +30,16 @@ def tempest_run(wrapper="") {
  * however if running fails, we should still collect the failed results
  */
 def tempest(deploy_vm=null){
+  find_tempest_results_cmd = "find /var/lib/lxc/*utility*/ -type f -name \"tempest_results.xml\""
   if (deploy_vm != null) {
     wrapper = "sudo ssh -T -oStrictHostKeyChecking=no ${deploy_vm}"
-    copy_cmd = "scp -o StrictHostKeyChecking=no -p  -r \$(${wrapper} \"cd /opt/rpc-openstack/openstack-ansible/playbooks && ansible utility[0] -m command -a 'echo {{ physical_host }}' | grep -Ev 'Variable files|utility'\"):"
+    tempest_server = "\$(${wrapper} \"cd /opt/rpc-openstack/openstack-ansible/playbooks && ansible utility[0] -m command -a 'echo {{ physical_host }}' | grep -Ev 'Variable files|utility'\")"
+    copy_cmd = "scp -o StrictHostKeyChecking=no -p  -r $tempest_server:"
+    tempest_results_location = "ssh -o StrictHostKeyChecking=no $tempest_server $find_tempest_results_cmd"
   } else{
     wrapper = ""
+    tempest_server =""
+    tempest_results_location = "$find_tempest_results_cmd"
     copy_cmd = "cp -p "
   }
   common.conditionalStage(
@@ -59,10 +64,17 @@ def tempest(deploy_vm=null){
         print(e)
         throw(e)
       } finally{
+        results_location = sh(
+          returnStdout: true,
+          script: """
+            ${tempest_results_location}""")
         sh """
-        rm -f *tempest*.xml
-        ${copy_cmd}/openstack/log/*utility*/**/*tempest*.xml . ||:
-        ${copy_cmd}/openstack/log/*utility*/*tempest*.xml . ||:
+          rm -f *tempest*.xml
+          # Following used for pre-Ocata, will fail post-Newton
+          ${copy_cmd}/openstack/log/*utility*/**/*tempest*.xml . ||:
+          ${copy_cmd}/openstack/log/*utility*/*tempest*.xml . ||:
+          # Following used for Ocata and up, will fail pre-Ocata
+          ${copy_cmd}${results_location} . ||:
         """
         junit allowEmptyResults: true, testResults: '*tempest*.xml'
       } //finally
