@@ -264,6 +264,7 @@
       env.TARGET = "aio"
       env.ACTION = "{action}"
       env.SERIES = "{series}"
+      kibana_branch = null
       timeout(time: 8, unit: 'HOURS'){{
         node() {{
           try {{
@@ -284,7 +285,18 @@
             if (env.SERIES == "kilo"
                 && env.TRIGGER == "pr"
                 && env.ACTION == "leapfrogupgrade" ){{
+                kibana_branch = env.UPGRADE_FROM_REF
                 env.UPGRADE_FROM_REF="origin/pr/${{env.ghprbPullId}}/merge"
+            }}
+            // Here we set kibana_branch when it has not been set above
+            if (kibana_branch == null) {{
+              if (env.STAGES.contains("Minor Upgrade")
+                  || env.STAGES.contains("Major Upgrade")
+                  || env.STAGES.contains("Leapfrog Upgrade")) {{
+                kibana_branch = env.UPGRADE_FROM_REF
+              }} else {{
+                kibana_branch = env.KIBANA_SELENIUM_BRANCH
+              }}
             }}
             // We need to checkout the rpc-openstack repo on the CIT Slave
             // so that we can check whether the patch is a docs-only patch
@@ -318,14 +330,6 @@
                 maas.deploy()
                 maas.verify()
                 tempest.tempest()
-                // TODO(mattt): Handle situation where env.UPGRADE_FROM_REF is
-                // set to the kilo PR
-                if (env.STAGES.contains("Major Upgrade")
-                    || env.STAGES.contains("Leapfrog Upgrade")) {{
-                  kibana_branch = env.UPGRADE_FROM_REF
-                }} else {{
-                  kibana_branch = env.KIBANA_SELENIUM_BRANCH
-                }}
                 kibana.kibana(kibana_branch)
                 holland.holland()
                 if (env.STAGES.contains("Minor Upgrade")) {{
